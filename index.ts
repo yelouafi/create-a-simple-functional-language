@@ -11,7 +11,9 @@
 import * as AST from "./ast";
 
 /*
-  For parsing we'll use the pcomb library https://github.com/yelouafi/pcomb
+  For parsing we'll use the pcomb library 
+  
+            https://github.com/yelouafi/pcomb
   
   Other options include 
     - manually writing the parser. See for example 
@@ -63,8 +65,8 @@ First we must fix a couple of things about our syntax
   in order to parse a term we must start by parsing a term. The 
   problem is also known as "left recursion"
 
-  To remove the left recursion, a common technique is to move out
-  all the non ambigous definition (ie do not start with a term)
+  To remove left recursion, a common technique is to move out
+  all the non ambigous definition (ie those not starting with a term)
   into a separate rule. The final result will look like
 
 
@@ -81,9 +83,10 @@ First we must fix a couple of things about our syntax
     let x = term in term 
     ( term )
   
-  we created 2 new rules `factor` (for non left recursive rules), and
-  app for function application: `?op term` means the suffix becomes optional
-  while `*(yerm)` means repitition (ie (term)(term)...)
+  we created 2 new rules : `factor` (for non left recursive rules), and
+  `app` for function application: `?op term` means that the suffix  `op term` 
+  becomes optional while `*(term)` means we can repete `(term)` many times 
+  (including 0).
 
 We do the same thing for types
 
@@ -106,7 +109,10 @@ We do the same thing for types
 */
 
 /*
-  First we define the atomic words of our language
+  First we define the atomic words of our language.
+  
+  `token(pattern)` takes a `pattern` which can be a string, a regex (or even another parser)
+  and returns a parser for that `pattern`. `token` will also skip trailing spaces after the word.
 */
 const NUM = token(/\d+/);
 const VAR = token(/[a-z]+/);
@@ -122,15 +128,15 @@ const EQ = token("=");
 const ARROW = token("=>");
 
 /*
-  Then we define composite rules
+  Then we define parsers which construct our AST
 */
 const tnum = TNUM.map((_) => AST.TNum);
 
 /*
-  note `type` and `tsuffix`/`tprefix` are mutually recursive
+  note `type` and `tsuffix`/`tprefix` are mutually recursive.
   We have a chicken-egg problem. To circumvant the circularity
-  we use `lazy` which take function returning a parser. This will
-  delay the creation of type and `breaks the loop`. 
+  we use `lazy` which takes a function returning a parser. This will
+  delay the creation of `type` which breaks the vicious circle. 
 */
 // tprefix ?tsuffix
 const type: Parser<AST.Type> = lazy(() => {
@@ -140,13 +146,15 @@ const type: Parser<AST.Type> = lazy(() => {
       // num => num
       return AST.TFun(ty, rest);
     },
-    tprefix,
-    maybe(tsuffix)
+    tprefix, // tprefix 
+    maybe(tsuffix) // ?tsuffix
   );
 });
 
+// => type
 const tsuffix = seq(ARROW, type);
 
+// num | ( type )
 const tprefix = oneOf(tnum, type.between(LPAR, RPAR));
 
 const num = NUM.map((s) => AST.Num(+s));
@@ -159,8 +167,8 @@ const term: Parser<AST.Term> = lazy(() => {
       if (rest == null) return t;
       return AST.Op(t, rest[0], rest[1]);
     },
-    app,
-    maybe(collect(OP, term))
+    app, // app
+    maybe(collect(OP, term)) // ?op term
   );
 });
 
@@ -189,7 +197,7 @@ const app = apply(
     return args.reduce((acc, arg) => AST.App(acc, arg), t);
   },
   factor,
-  many(term.between(LPAR, RPAR))
+  many(term.between(LPAR, RPAR)) // *(term)
 );
 
 /*
@@ -237,7 +245,7 @@ function evaluate(t: AST.Term, env: Env = {}): number | Function {
   }
 }
 
-// Scope store the types of free variables in a term
+// Scope stores the types of free variables in a term
 type Scope = {
   [key: string]: AST.Type;
 };
@@ -291,7 +299,8 @@ function typeCheck(t: AST.Term, scope: Scope = {}): AST.Type {
 
 /*
   Javascipt code generation. In fact, our language is a very
-  small subset of Javascript. So the transpilation is not difficult.
+  small subset of Javascript. So the transpilation shouldn't be 
+  difficult.
 */
 function emitJS(t: AST.Term): string {
   if (t.type === "Num") return String(t.value);
