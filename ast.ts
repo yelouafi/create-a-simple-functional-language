@@ -2,11 +2,11 @@
  
 In this file we define the abstract syntax of the language
 *abstract* because we care about the core structure of the
-language. The language as a tree data structure, hence the
+language. The language is represented as a tree data structure, hence the
 name `Abstract Syntax Tree` or AST
 
 In contrast there is the *conrete syntax* which cares about
-the linear representation of the program as sequences of
+the linear representation of the program as a sequence of
 characters. This is where we deal with issus such as parentheses,
 associativity, priority of multiplication over addition.
 
@@ -18,7 +18,7 @@ Below, examples of phrases of our language
   
 
 Our syntax includes 2 "syntactic categories" : 
-  - terms : represents phrases that can be evaluated : 1 + 2, increment(10) ...
+  - terms : represent phrases that can be evaluated : 1 + 2, increment(10) ...
   - types : represent type annotations: num, num => num
 
   term :=    
@@ -52,7 +52,7 @@ export type Type =
   | { type: "TFun"; tyParam: Type; tyResult: Type };
 
 /**
-  And here are the data constructors: i.e. functions that will
+  here we define the data constructors: i.e. functions that will
   construct the various objects of our AST
  */
 export function Num(value: number): Term {
@@ -87,7 +87,7 @@ export function TFun(tyParam: Type, tyResult: Type): Type {
 
 /**
   Determines if 2 types are equal
-  We'll need this one for type checking
+  We'll need this for type checking
  */
 export function typeEq(ty1: Type, ty2: Type): boolean {
   if (ty1.type === "TNum" && ty2.type === "TNum") return true;
