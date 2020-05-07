@@ -11,18 +11,21 @@
 import * as AST from "./ast";
 
 /*
-  We'll use the pcomb library https://github.com/yelouafi/pcomb
+  For parsing we'll use the pcomb library https://github.com/yelouafi/pcomb
   
   Other options include 
     - manually writing the parser. See for example 
+    
             https://github.com/jamiebuilds/the-super-tiny-compiler
 
     - Use a "parser generator": a tool that takes the syntax definition in
       some specific notation and generate the parser code. See for example
+      
             https://pegjs.org/
 
   I prefer Parser Combinators, they are simple and compositional (= powerful)
-  For an introdcution on Parser Combinators  see
+  For an introdcution to Parser Combinators  see
+  
       https://abstractfun.com/2018-11-19/introduction-to-parser-combinators
 */
 
@@ -80,7 +83,7 @@ First we must fix a couple of things about our syntax
   
   we created 2 new rules `factor` (for non left recursive rules), and
   app for function application: `?op term` means the suffix becomes optional
-  suffix, while `*(yerm)` means repitition (ie (term)(term)...)
+  while `*(yerm)` means repitition (ie (term)(term)...)
 
 We do the same thing for types
 
@@ -125,7 +128,7 @@ const tnum = TNUM.map((_) => AST.TNum);
 
 /*
   note `type` and `tsuffix`/`tprefix` are mutually recursive
-  We have chicken-egg problem. To circumvant the circularity
+  We have a chicken-egg problem. To circumvant the circularity
   we use `lazy` which take function returning a parser. This will
   delay the creation of type and `breaks the loop`. 
 */
@@ -190,7 +193,7 @@ const app = apply(
 );
 
 /*
-  evaluate a term and returns a javascript value
+  evaluates a term and returns a javascript value
   In our language we have 2 possible values: numbers and functions 
 */
 
@@ -234,7 +237,7 @@ function evaluate(t: AST.Term, env: Env = {}): number | Function {
   }
 }
 
-// Scope is context to store the types of free variables in a term
+// Scope store the types of free variables in a term
 type Scope = {
   [key: string]: AST.Type;
 };
