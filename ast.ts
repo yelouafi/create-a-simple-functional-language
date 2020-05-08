@@ -22,9 +22,11 @@ Our syntax includes 2 "syntactic categories" :
   - types : represent type annotations: num, num => num
 
   term :=    
-    num
+    num (1,2, ...)
+    bool (true, false)
     var
     term op term     
+    if term then term else term
     fn(x: type) => term -- binding forms
     term(term)
     let x = term in term -- binding forms
@@ -32,6 +34,7 @@ Our syntax includes 2 "syntactic categories" :
   
   type :=
     num
+    bool
     type => type
     ( type )
  */
@@ -41,14 +44,17 @@ Our syntax includes 2 "syntactic categories" :
  */
 export type Term =
   | { type: "Num"; value: number }
+  | { type: "Bool"; value: boolean }
   | { type: "Var"; name: string }
   | { type: "Op"; left: Term; op: string; right: Term }
+  | { type: "If"; cond: Term; then: Term; elze: Term }
   | { type: "Fun"; paramName: string; paramType: Type; body: Term }
   | { type: "App"; fun: Term; arg: Term }
   | { type: "Let"; name: string; definition: Term; body: Term };
 
 export type Type =
   | { type: "TNum" }
+  | { type: "TBool" }
   | { type: "TFun"; tyParam: Type; tyResult: Type };
 
 /**
@@ -59,12 +65,20 @@ export function Num(value: number): Term {
   return { type: "Num", value };
 }
 
+export function Bool(value: boolean): Term {
+  return { type: "Bool", value };
+}
+
 export function Var(name: string): Term {
   return { type: "Var", name };
 }
 
 export function Op(left: Term, op: string, right: Term): Term {
   return { type: "Op", left, op, right };
+}
+
+export function If(cond: Term, then: Term, elze: Term): Term {
+  return { type: "If", cond, then, elze };
 }
 
 export function Fun(paramName: string, paramType: Type, body: Term): Term {
@@ -81,6 +95,8 @@ export function Let(name: string, definition: Term, body: Term): Term {
 
 export const TNum: Type = { type: "TNum" };
 
+export const TBool: Type = { type: "TBool" };
+
 export function TFun(tyParam: Type, tyResult: Type): Type {
   return { type: "TFun", tyParam, tyResult };
 }
@@ -91,6 +107,7 @@ export function TFun(tyParam: Type, tyResult: Type): Type {
  */
 export function typeEq(ty1: Type, ty2: Type): boolean {
   if (ty1.type === "TNum" && ty2.type === "TNum") return true;
+  if (ty1.type === "TBool" && ty2.type === "TBool") return true;
   if (ty1.type === "TFun" && ty2.type === "TFun") {
     return (
       typeEq(ty1.tyParam, ty2.tyParam) && typeEq(ty1.tyResult, ty2.tyResult)
@@ -104,6 +121,7 @@ export function typeEq(ty1: Type, ty2: Type): boolean {
 */
 export function printTerm(t: Term): string {
   if (t.type === "Num") return String(t.value);
+  if (t.type === "Bool") return String(t.value);
   if (t.type === "Var") return t.name;
   if (t.type === "Fun") {
     return `fn(${t.paramName}: ${printType(t.paramType)}) => ${printTerm(
@@ -112,6 +130,11 @@ export function printTerm(t: Term): string {
   }
   if (t.type === "Op") {
     return `${printTerm(t.left)} ${t.op} ${printTerm(t.right)}`;
+  }
+  if (t.type === "If") {
+    return `if ${printTerm(t.cond)} then ${printTerm(t.then)} else ${printTerm(
+      t.elze
+    )}`;
   }
   if (t.type === "App") return `${printTerm(t.fun)}(${printTerm(t.arg)})`;
   if (t.type === "Let") {
@@ -123,6 +146,7 @@ export function printTerm(t: Term): string {
 
 export function printType(ty: Type): string {
   if (ty.type === "TNum") return "num";
+  if (ty.type === "TBool") return "bool";
   if (ty.type === "TFun") {
     const nest = ty.tyParam.type === "TFun";
     return `${nest ? "(" : ""}${printType(ty.tyParam)}${

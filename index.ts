@@ -43,13 +43,16 @@ import {
   maybe,
   many,
 } from "pcomb";
+import { buildInfix, infixTable } from "./infix";
 /*
 First we must fix a couple of things about our syntax
 
   term :=    
     num
+    bool
     var
   ? term op term     
+    if term then term else term
     fn(x: type) => term -- binding forms
   ? term(term)
     let x = term in term -- binding forms
@@ -78,7 +81,9 @@ First we must fix a couple of things about our syntax
 
   factor :=
     num
+    bool
     var
+    if term then term else term
     fn(x: type) => term
     let x = term in term 
     ( term )
@@ -92,6 +97,7 @@ We do the same thing for types
 
   type :=
     num
+    bool
     type => type
     ( type )
 
@@ -103,6 +109,7 @@ We do the same thing for types
       
   tprefix :=
       num
+      bool
       ( type )
 
   **ONLY THEN** we can start implementing our parser
@@ -115,12 +122,18 @@ We do the same thing for types
   and returns a parser for that `pattern`. `token` will also skip trailing spaces after the word.
 */
 const NUM = token(/\d+/);
+const BOOL_TRUE = token("true");
+const BOOL_FALSE = token("false");
 const VAR = token(/[a-z]+/);
-const OP = token(/\+|\*/);
+const OP = token(/[\+\-\*\\\^\=\<\>\&\|\#\@\!\~\$\?\%]+/);
 const FN = token("fn");
 const LET = token("let");
 const IN = token("in");
+const IF = token("if");
+const THEN = token("then");
+const ELSE = token("else");
 const TNUM = token("num");
+const TBOOL = token("bool");
 const LPAR = token("(");
 const RPAR = token(")");
 const COLON = token(":");
@@ -130,8 +143,8 @@ const ARROW = token("=>");
 /*
   Then we define parsers which construct our AST
 */
-const tnum = TNUM.map((_) => AST.TNum);
-
+const tnum = TNUM.mapTo(AST.TNum);
+const tbool = TBOOL.mapTo(AST.TBool);
 /*
   note `type` and `tsuffix`/`tprefix` are mutually recursive.
   We have a chicken-egg problem. To circumvant the circularity
@@ -146,7 +159,7 @@ const type: Parser<AST.Type> = lazy(() => {
       // num => num
       return AST.TFun(ty, rest);
     },
-    tprefix, // tprefix 
+    tprefix, // tprefix
     maybe(tsuffix) // ?tsuffix
   );
 });
@@ -155,22 +168,33 @@ const type: Parser<AST.Type> = lazy(() => {
 const tsuffix = seq(ARROW, type);
 
 // num | ( type )
-const tprefix = oneOf(tnum, type.between(LPAR, RPAR));
+const tprefix = oneOf(tnum, tbool, type.between(LPAR, RPAR));
 
 const num = NUM.map((s) => AST.Num(+s));
+const bool = oneOf(
+  BOOL_TRUE.mapTo(AST.Bool(true)),
+  BOOL_FALSE.mapTo(AST.Bool(false))
+);
+
 const var_ = VAR.map(AST.Var);
 
 // app ?op term
 const term: Parser<AST.Term> = lazy(() => {
   return apply(
-    (t, rest) => {
-      if (rest == null) return t;
-      return AST.Op(t, rest[0], rest[1]);
-    },
+    (t, rest) => buildInfix(t, rest, []),
     app, // app
-    maybe(collect(OP, term)) // ?op term
+    many(collect(OP, app)) // ?op term
   );
 });
+
+window._parse = (s) => testParser(term, s);
+
+const if_ = apply(
+  AST.If,
+  seq(IF, term), // if term
+  seq(THEN, term), // then term
+  seq(ELSE, term) // else term
+);
 
 // fn(x: type) => term
 const fn = apply(
@@ -189,7 +213,7 @@ const let_ = apply(
 );
 
 // oneOf succeeds with any of the given alternatives
-const factor = oneOf(num, fn, let_, var_, term.between(LPAR, RPAR));
+const factor = oneOf(num, bool, if_, fn, let_, var_, term.between(LPAR, RPAR));
 
 // factor *(term)
 const app = apply(
@@ -206,14 +230,25 @@ const app = apply(
 */
 
 // Env is dictionary to represent free variables of a term
+type Value = number | boolean | Function;
+
 type Env = {
-  [key: string]: number | Function;
+  [key: string]: Value;
 };
-function evaluate(t: AST.Term, env: Env = {}): number | Function {
+function evaluate(t: AST.Term, env: Env = {}): Value {
   if (t.type === "Num") return t.value;
+  if (t.type === "Bool") return t.value;
   if (t.type === "Var") {
     if (t.name in env) return env[t.name];
     throw new Error(`Unkown variable ${t.name}`);
+  }
+  if (t.type === "If") {
+    const cond = evaluate(t.cond, env) as boolean;
+    if (cond === true) {
+      return evaluate(t.then, env);
+    } else {
+      return evaluate(t.elze, env);
+    }
   }
   if (t.type === "Fun") {
     return function (value) {
@@ -231,11 +266,11 @@ function evaluate(t: AST.Term, env: Env = {}): number | Function {
     return fun(arg);
   }
   if (t.type === "Op") {
-    const left = evaluate(t.left, env) as number;
-    const right = evaluate(t.right, env) as number;
-    if (t.op === "+") return left + right;
-    if (t.op === "*") return left * right;
-    throw new Error(`Unkown operator ${t.op}`);
+    const left = evaluate(t.left, env);
+    const right = evaluate(t.right, env);
+    const fn = opTable[t.op];
+    if (fn == null) throw new Error(`Unkown operator ${t.op}`);
+    return fn(left, right);
   }
   if (t.type === "Let") {
     // let and fn are binding constructs
@@ -245,15 +280,44 @@ function evaluate(t: AST.Term, env: Env = {}): number | Function {
   }
 }
 
+const opTable = {
+  "&&": (x: any, y: any) => x && y,
+  "||": (x: any, y: any) => x || y,
+  "==": (x: any, y: any) => x == y,
+  "!=": (x: any, y: any) => x != y,
+  "<": (x: any, y: any) => x < y,
+  ">": (x: any, y: any) => x > y,
+  "<=": (x: any, y: any) => x <= y,
+  ">=": (x: any, y: any) => x >= y,
+  "+": (x: any, y: any) => x + y,
+  "-": (x: any, y: any) => x - y,
+  "*": (x: any, y: any) => x * y,
+  "/": (x: any, y: any) => x / y,
+  "**": (x: any, y: any) => x ** y,
+};
+
 // Scope stores the types of free variables in a term
 type Scope = {
   [key: string]: AST.Type;
 };
 function typeCheck(t: AST.Term, scope: Scope = {}): AST.Type {
   if (t.type === "Num") return AST.TNum;
+  if (t.type === "Bool") return AST.TBool;
   if (t.type === "Var") {
     if (t.name in scope) return scope[t.name];
     throw new TypeError(`Unkown variable ${t.name}`);
+  }
+  if (t.type === "If") {
+    const cond = typeCheck(t.cond, scope);
+    if (cond.type !== "TBool")
+      throw new TypeError(
+        `If: exepected a bool condition, found ${AST.printType(cond)}`
+      );
+    const then = typeCheck(t.then, scope);
+    const elze = typeCheck(t.elze, scope);
+    if (!AST.typeEq(then, elze))
+      throw new TypeError(`then/else branches must have the same type.`);
+    return then;
   }
   if (t.type === "Fun") {
     const newScope = { ...scope, [t.paramName]: t.paramType };
@@ -276,19 +340,26 @@ function typeCheck(t: AST.Term, scope: Scope = {}): AST.Type {
     return fun.tyResult;
   }
   if (t.type === "Op") {
+    const inf = infixTable.find((inf) => inf.symbol === t.op);
+    if (inf == null) throw new TypeError(`Unkown operator ${t.op}`);
+    const [tyLeft, tyRight, tyRes] = inf.tySig;
     const left = typeCheck(t.left, scope);
-    if (left.type !== "TNum") {
+    if (!AST.typeEq(left, tyLeft)) {
       throw new TypeError(
-        `Op ${t.op} expected a num, found ${AST.printType(left)}`
+        `Op ${t.op} expected ${AST.printType(tyLeft)}, found ${AST.printType(
+          left
+        )}`
       );
     }
     const right = typeCheck(t.right, scope);
-    if (right.type !== "TNum") {
+    if (!AST.typeEq(right, tyRight)) {
       throw new TypeError(
-        `Op ${t.op} expected a num, found ${AST.printType(right)}`
+        `Op ${t.op} expected ${AST.printType(tyRight)}, found ${AST.printType(
+          right
+        )}`
       );
     }
-    return AST.TNum;
+    return tyRes;
   }
   if (t.type === "Let") {
     const def = typeCheck(t.definition, scope);
@@ -318,7 +389,7 @@ function emitJS(t: AST.Term): string {
   const t = testParser(term, s);
   const ty = typeCheck(t);
   const val = evaluate(t);
-  return `${typeof val === "number" ? val : "<function>"} : ${AST.printType(
+  return `${typeof val === "function" ? "<function>" : val} : ${AST.printType(
     ty
   )}`;
 };
