@@ -1,5 +1,34 @@
 import { Type, TFun, TNum, TBool, Term, Op } from "./ast";
-import { setState } from "pcomb";
+
+/*
+  Here we define infix operations supported in our language.
+  Our goal is to handle 
+  
+  - priority, ie if `*` has a higher priority than `+` then
+  an expression like `1 + 2 * 3` should be parsed like
+  `1 + (2 * 3)`
+
+  - associativity tells us how to handle operations with the
+  same priority. For example if `+` is left associative then
+  `2 + 3 + 4` should be parsed like `(2 + 3) + 4`.
+
+  We can handle those issues directly in the syntax defintion
+  by defining a rule for each priority. A more flexible solution
+  if to 
+  
+  - define a simple parser for arbitrary symbols that could
+  denote operations (/[\+\-\&\%...]+/
+
+  - Parse the entire experssion linearly, then use a custom infix 
+  table to rebuild the correct expression tree.
+
+  This is the method demonstrated in this exmaple. The advantage 
+  is that we can extend the operations of the language by simply
+  adding an entry to the infix table.
+
+  Another advantage is that you can allow user defined infix
+  operators
+*/
 
 export enum Assoc {
   Left,
@@ -25,7 +54,7 @@ export function infix(
   return { symbol, assoc, priority, tySig };
 }
 
-// Type signatures
+// Type signatures for operations: left, right & result
 const tyArith: TySig = [TNum, TNum, TNum]; // arithmetic
 const tyComp: TySig = [TNum, TNum, TBool]; // comparaison
 const tyBool: TySig = [TBool, TBool, TBool]; // boolean
