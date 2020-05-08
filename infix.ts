@@ -14,7 +14,7 @@ import { Type, TFun, TNum, TBool, Term, Op } from "./ast";
 
   We can handle those issues directly in the syntax defintion
   by defining a rule for each priority. A more flexible solution
-  if to 
+  is to 
   
   - define a simple parser for arbitrary symbols that could
   denote operations (/[\+\-\&\%...]+/
@@ -95,7 +95,7 @@ export function buildInfix(
   }
 
   // t2 [] [[]: (t1, op1)]  => t1 op1 t2
-  // t2 [] [ys: (t,op) (t1,op1)]  => t1 op1 t2
+  // t2 [] [ys: (t,op) (t1,op1)]  =>
   //      op < op1    ? (t1 op1 t2) [] [ys: (t,op)]
   //      op > op1    ? t2 [ys: (op1, (t op t1)]
   else if (rest.length === 0) {
