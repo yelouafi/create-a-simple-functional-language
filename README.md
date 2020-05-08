@@ -13,5 +13,12 @@ parcel index.html
 Then you can use `_eval` in the developper console. Example
 
 ```js
-_eval("let inc = fn(x: int) => x + 1 in inc(100)")
+_eval("let inc = fn(x: int) => x + 1 in inc(100)");
 ```
+
+# More features
+
+I'll be adding occasionnally examples for supporting more features. The
+examples will be in separate branches.
+
+- boolean types && `if` construct, also has more operations && priority/associativity [example]()
