@@ -13,8 +13,8 @@ associativity, priority of multiplication over addition.
 Below, examples of phrases of our language
 
   simple math       : 1 + 2 * x
-  function        : add(x: num) => fn(y: num) => x + y
-  let expresions  : let inc = fn(x: num) => x + 1 in inc(2)
+  function          : fn(x: num) => fn(y: num) => x + y
+  let expresions    : let inc = fn(x: num) => x + 1 in inc(2)
   
 
 Our syntax includes 2 "syntactic categories" : 
