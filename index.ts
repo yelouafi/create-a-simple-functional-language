@@ -32,11 +32,9 @@ see master branch
   term :=    
     app ?op term     
     
-  app := factor ?appSuff
-
-  appSuff :=
-    .tag   ?appSuff
-    (term) ?appSuff
+  app := factor *appSuff
+  
+  appSuff := (term) | .tag
 
   factor :=
     num
