@@ -45,39 +45,18 @@ import {
 } from "pcomb";
 import { buildInfix, infixTable } from "./infix";
 /*
-First we must fix a couple of things about our syntax
 
-  term :=    
-    num
-    bool
-    var
-  ? term op term     
-    if term then term else term
-    fn(x: type) => term -- binding forms
-  ? term(term)
-    let x = term in term -- binding forms
-    ( term )
-  
-  The problem is in the lines marked with ?. For example the line
-  `term op term` says something like: 
-      
-      to parse a term we need to parse a term followed by
-      an op followed by term
-
-  This is an ambigous definition, because it basically says that
-  in order to parse a term we must start by parsing a term. The 
-  problem is also known as "left recursion"
-
-  To remove left recursion, a common technique is to move out
-  all the non ambigous definition (ie those not starting with a term)
-  into a separate rule. The final result will look like
-
+For how to convert an abstract syntax into a concrete one
+see master branch=
 
   term :=    
     app ?op term     
     
-  app :=
-    factor *(term)
+  app := factor ?appSuff
+
+  appSuff :=
+    .tag ?appSuff
+    (term) ?app
 
   factor :=
     num
@@ -87,19 +66,7 @@ First we must fix a couple of things about our syntax
     fn(x: type) => term
     let x = term in term 
     ( term )
-  
-  we created 2 new rules : `factor` (for non left recursive rules), and
-  `app` for function application: `?op term` means that the suffix  `op term` 
-  becomes optional while `*(term)` means we can repete `(term)` many times 
-  (including 0).
-
-We do the same thing for types
-
-  type :=
-    num
-    bool
-    type => type
-    ( type )
+    {tag: term, ...}
 
   type :=
     tprefix ?tsuffix
@@ -110,17 +77,12 @@ We do the same thing for types
   tprefix :=
       num
       bool
+      {tag: type, ...}
       ( type )
 
   **ONLY THEN** we can start implementing our parser
 */
 
-/*
-  First we define the atomic words of our language.
-  
-  `token(pattern)` takes a `pattern` which can be a string, a regex (or even another parser)
-  and returns a parser for that `pattern`. `token` will also skip trailing spaces after the word.
-*/
 const NUM = token(/\d+/);
 const BOOL_TRUE = token("true");
 const BOOL_FALSE = token("false");
@@ -139,6 +101,10 @@ const RPAR = token(")");
 const COLON = token(":");
 const EQ = token("=");
 const ARROW = token("=>");
+const LBRACE = token("{");
+const RBRACE = token("}");
+const PERIOD = token(".");
+const COMMA = token(",");
 
 /*
   Then we define parsers which construct our AST
@@ -167,10 +133,26 @@ const type: Parser<AST.Type> = lazy(() => {
 // => type
 const tsuffix = seq(ARROW, type);
 
+// tag: type
+const tpair = collect(VAR, seq(COLON, type));
+
+// { tag: type, ... }
+const trecord = tpair
+  .sepBy(COMMA)
+  .between(LBRACE, RBRACE)
+  .map((pairs) => {
+    const dict = {};
+    for (let [tag, type] of pairs) {
+      dict[tag] = type;
+    }
+    return AST.TRecord(dict);
+  });
+
 // num | ( type )
-const tprefix = oneOf(tnum, tbool, type.between(LPAR, RPAR));
+const tprefix = oneOf(tnum, tbool, trecord, type.between(LPAR, RPAR));
 
 const num = NUM.map((s) => AST.Num(+s));
+
 const bool = oneOf(
   BOOL_TRUE.mapTo(AST.Bool(true)),
   BOOL_FALSE.mapTo(AST.Bool(false))
@@ -186,8 +168,6 @@ const term: Parser<AST.Term> = lazy(() => {
     many(collect(OP, app)) // ?op term
   );
 });
-
-window._parse = (s) => testParser(term, s);
 
 const if_ = apply(
   AST.If,
@@ -212,16 +192,50 @@ const let_ = apply(
   seq(IN, term) // in term
 );
 
+// tag: term
+const pair = collect(VAR, seq(COLON, term));
+
+// { tag: term, ... }
+const record = pair
+  .sepBy(COMMA)
+  .between(LBRACE, RBRACE)
+  .map((pairs) => {
+    const dict = {};
+    for (let [tag, type] of pairs) {
+      dict[tag] = type;
+    }
+    return AST.Record(dict);
+  });
+
 // oneOf succeeds with any of the given alternatives
-const factor = oneOf(num, bool, if_, fn, let_, var_, term.between(LPAR, RPAR));
+const factor = oneOf(
+  num,
+  bool,
+  if_,
+  fn,
+  let_,
+  var_,
+  record,
+  term.between(LPAR, RPAR)
+);
+
+// .tag ? | (term)
+const appSuf = oneOf<string | AST.Term>(
+  seq(PERIOD, VAR),
+  term.between(LPAR, RPAR)
+);
 
 // factor *(term)
 const app = apply(
   (t, args) => {
-    return args.reduce((acc, arg) => AST.App(acc, arg), t);
+    return args.reduce((acc: AST.Term, arg) => {
+      return typeof arg === "string"
+        ? AST.Projection(acc, arg)
+        : AST.App(acc, arg);
+    }, t);
   },
   factor,
-  many(term.between(LPAR, RPAR)) // *(term)
+  many(appSuf)
 );
 
 /*
@@ -230,7 +244,7 @@ const app = apply(
 */
 
 // Env is dictionary to represent free variables of a term
-type Value = number | boolean | Function;
+type Value = number | boolean | Function | object;
 
 type Env = {
   [key: string]: Value;
@@ -277,6 +291,19 @@ function evaluate(t: AST.Term, env: Env = {}): Value {
     const def = evaluate(t.definition, env);
     const newEnv = { ...env, [t.name]: def };
     return evaluate(t.body, newEnv);
+  }
+  if (t.type === "Record") {
+    const res = {};
+    for (let key in t.dict) {
+      const value = evaluate(t.dict[key], env);
+      res[key] = value;
+    }
+    return res;
+  }
+  if (t.type === "Projection") {
+    const rec = evaluate(t.record, env) as any;
+    if (t.field in rec) return rec[t.field];
+    throw new Error(`object does not have field ${t.field}`);
   }
 }
 
@@ -366,6 +393,24 @@ function typeCheck(t: AST.Term, scope: Scope = {}): AST.Type {
     const newScope = { ...scope, [t.name]: def };
     return typeCheck(t.body, newScope);
   }
+  if (t.type === "Record") {
+    const res = {};
+    for (let key in t.dict) {
+      const ty = typeCheck(t.dict[key], scope);
+      res[key] = ty;
+    }
+    return AST.TRecord(res);
+  }
+  if (t.type === "Projection") {
+    const rec = typeCheck(t.record, scope);
+    if (rec.type !== "TRecord")
+      throw new Error(`type ${AST.printType(rec)} is not a record type`);
+    if (!(t.field in rec.dict))
+      throw new Error(
+        `type ${AST.printType(rec)} does not have field ${t.field}`
+      );
+    return rec.dict[t.field];
+  }
 }
 
 /*
@@ -384,12 +429,18 @@ function emitJS(t: AST.Term): string {
   // The rest is left an exercise
 }
 
+function printVal(v: Value) {
+  if (typeof v === "number" || typeof v === "boolean") return v;
+  if (typeof v === "function") return "<function>";
+  return `{${Object.keys(v)
+    .map((key) => `${key}: ${printVal(v[key])}`)
+    .join(", ")}}`;
+}
+
 // quick hack to evaluate programs in developer console
 (window as any)._eval = (s) => {
   const t = testParser(term, s);
   const ty = typeCheck(t);
   const val = evaluate(t);
-  return `${typeof val === "function" ? "<function>" : val} : ${AST.printType(
-    ty
-  )}`;
+  return `${printVal(val)} : ${AST.printType(ty)}`;
 };

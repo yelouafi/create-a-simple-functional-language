@@ -31,17 +31,24 @@ Our syntax includes 2 "syntactic categories" :
     term(term)
     let x = term in term -- binding forms
     ( term )
+    {tag: term, ...}     -- records
+    term.tag             -- record projection
   
   type :=
     num
     bool
     type => type
+    {tag: type, ...}
     ( type )
  */
 
 /*
   Here we define the AST of our language
  */
+export interface Dict<A> {
+  [key: string]: A;
+}
+
 export type Term =
   | { type: "Num"; value: number }
   | { type: "Bool"; value: boolean }
@@ -50,12 +57,15 @@ export type Term =
   | { type: "If"; cond: Term; then: Term; elze: Term }
   | { type: "Fun"; paramName: string; paramType: Type; body: Term }
   | { type: "App"; fun: Term; arg: Term }
-  | { type: "Let"; name: string; definition: Term; body: Term };
+  | { type: "Let"; name: string; definition: Term; body: Term }
+  | { type: "Record"; dict: Dict<Term> }
+  | { type: "Projection"; record: Term; field: string };
 
 export type Type =
   | { type: "TNum" }
   | { type: "TBool" }
-  | { type: "TFun"; tyParam: Type; tyResult: Type };
+  | { type: "TFun"; tyParam: Type; tyResult: Type }
+  | { type: "TRecord"; dict: Dict<Type> };
 
 /**
   here we define the data constructors: i.e. functions that will
@@ -93,12 +103,24 @@ export function Let(name: string, definition: Term, body: Term): Term {
   return { type: "Let", name, definition, body };
 }
 
+export function Record(dict: Dict<Term>): Term {
+  return { type: "Record", dict };
+}
+
+export function Projection(record: Term, field: string): Term {
+  return { type: "Projection", record, field };
+}
+
 export const TNum: Type = { type: "TNum" };
 
 export const TBool: Type = { type: "TBool" };
 
 export function TFun(tyParam: Type, tyResult: Type): Type {
   return { type: "TFun", tyParam, tyResult };
+}
+
+export function TRecord(dict: Dict<Type>): Type {
+  return { type: "TRecord", dict };
 }
 
 /**
@@ -111,6 +133,14 @@ export function typeEq(ty1: Type, ty2: Type): boolean {
   if (ty1.type === "TFun" && ty2.type === "TFun") {
     return (
       typeEq(ty1.tyParam, ty2.tyParam) && typeEq(ty1.tyResult, ty2.tyResult)
+    );
+  }
+  if (ty1.type === "TRecord" && ty2.type === "TRecord") {
+    const keys1 = Object.keys(ty1.dict);
+    const keys2 = Object.keys(ty2.dict);
+    return (
+      keys1.length === keys2.length &&
+      keys1.every((key) => typeEq(ty1.dict[key], ty2.dict[key]))
     );
   }
   return false;
@@ -142,6 +172,14 @@ export function printTerm(t: Term): string {
       t.body
     )}`;
   }
+  if (t.type === "Record") {
+    return `{${Object.keys(t.dict)
+      .map((key) => `${key}: ${printTerm(t.dict[key])}`)
+      .join(", ")}}`;
+  }
+  if (t.type === "Projection") {
+    return `${printTerm(t.record)}.${t.field}`;
+  }
 }
 
 export function printType(ty: Type): string {
@@ -152,5 +190,10 @@ export function printType(ty: Type): string {
     return `${nest ? "(" : ""}${printType(ty.tyParam)}${
       nest ? ")" : ""
     } => ${printType(ty.tyResult)}`;
+  }
+  if (ty.type === "TRecord") {
+    return `{${Object.keys(ty.dict)
+      .map((key) => `${key}: ${printType(ty.dict[key])}`)
+      .join(", ")}}`;
   }
 }
