@@ -10,27 +10,6 @@
 
 import * as AST from "./ast";
 
-/*
-  For parsing we'll use the pcomb library 
-  
-            https://github.com/yelouafi/pcomb
-  
-  Other options include 
-    - manually writing the parser. See for example 
-    
-            https://github.com/jamiebuilds/the-super-tiny-compiler
-
-    - Use a "parser generator": a tool that takes the syntax definition in
-      some specific notation and generate the parser code. See for example
-      
-            https://pegjs.org/
-
-  I prefer Parser Combinators, they are simple and compositional (= powerful)
-  For an introdcution to Parser Combinators  see
-  
-      https://abstractfun.com/2018-11-19/introduction-to-parser-combinators
-*/
-
 import {
   token,
   testParser,
@@ -44,10 +23,11 @@ import {
   many,
 } from "pcomb";
 import { buildInfix, infixTable } from "./infix";
+
 /*
 
 For how to convert an abstract syntax into a concrete one
-see master branch=
+see master branch
 
   term :=    
     app ?op term     
@@ -55,8 +35,8 @@ see master branch=
   app := factor ?appSuff
 
   appSuff :=
-    .tag ?appSuff
-    (term) ?app
+    .tag   ?appSuff
+    (term) ?appSuff
 
   factor :=
     num
@@ -79,8 +59,6 @@ see master branch=
       bool
       {tag: type, ...}
       ( type )
-
-  **ONLY THEN** we can start implementing our parser
 */
 
 const NUM = token(/\d+/);
