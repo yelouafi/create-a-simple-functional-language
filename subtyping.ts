@@ -39,8 +39,7 @@ export function isSubtype(tyFrom: Type, tyTo: Type): boolean {
 }
 
 /*
-  Computes the greatest lower bound of 2 types, i.e. the minimum
-  type that 
+  Computes the greatest lower bound of 2 types
 */
 export function meet(ty1: Type, ty2: Type): Type | null {
   if (isSubtype(ty1, ty2)) return ty2;
