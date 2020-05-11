@@ -3,16 +3,15 @@ import { Type } from "./ast";
 /**
 
   In system without subtyping we rely on simple equality between types,
-  types are regarded are like isolated islands with no possible correspondance
-  betwwen different islands. Two types are "compatible" if they habit the
+  types are regarded like isolated islands with no possible correspondance
+  between different islands. Two types are "compatible" if they habit the
   same island.
 
   In a system with subtyping, we allow unidirectional "bridges" between
   those islands. We can also view this islands forming a sort of hierarchy,
   with the possibility for one type to be promoted into another type.
 
-  This function `canPromote` is the one to decide "who deserves" to be
-  promoted and who don't.
+  This function is the one to decide "who deserves" to be promoted and who don't.
  */
 
 export function isSubtype(tyFrom: Type, tyTo: Type): boolean {
