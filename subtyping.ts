@@ -44,9 +44,9 @@ export function isSubtype(tyFrom: Type, tyTo: Type): boolean {
 export function meet(ty1: Type, ty2: Type): Type | null {
   if (isSubtype(ty1, ty2)) return ty2;
   if (isSubtype(ty2, ty1)) return ty1;
-  // Here we could more like intersect 2 record types
+  // Here we could do more like intersect 2 record types
   // eg for {a: num, x: bool} and {a:num, y: num} we could
-  // return something like {a:num}. I don't know which is better
+  // return {a:num}. I don't know which is better
   // I think the latter option makes more sense in systems
   // with intersection types
   return null;
