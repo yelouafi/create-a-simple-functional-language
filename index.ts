@@ -23,6 +23,7 @@ import {
   many,
 } from "pcomb";
 import { buildInfix, infixTable } from "./infix";
+import { isSubtype, meet } from "./subtyping";
 
 /*
 
@@ -208,7 +209,7 @@ const app = apply(
       return typeof arg === "string"
         ? AST.Projection(acc, arg)
         : AST.App(acc, arg);
-    }, t);
+    }, t) as AST.Term;
   },
   factor,
   many(appSuf)
@@ -308,18 +309,18 @@ function typeCheck(t: AST.Term, scope: Scope = {}): AST.Type {
   if (t.type === "Bool") return AST.TBool;
   if (t.type === "Var") {
     if (t.name in scope) return scope[t.name];
-    throw new TypeError(`Unkown variable ${t.name}`);
+    typeError(t, `Unkown variable ${t.name}`);
   }
   if (t.type === "If") {
     const cond = typeCheck(t.cond, scope);
     if (cond.type !== "TBool")
-      throw new TypeError(
-        `If: exepected a bool condition, found ${AST.printType(cond)}`
-      );
+      typeError(t, `Exepected a bool, found ${AST.printType(cond)}\n`);
     const then = typeCheck(t.then, scope);
     const elze = typeCheck(t.elze, scope);
-    if (!AST.typeEq(then, elze))
-      throw new TypeError(`then/else branches must have the same type.`);
+    const ty = meet(then, elze);
+    if (ty == null) {
+      typeError(t, `Types of then/else are not compatible`);
+    }
     return then;
   }
   if (t.type === "Fun") {
@@ -330,34 +331,37 @@ function typeCheck(t: AST.Term, scope: Scope = {}): AST.Type {
   if (t.type === "App") {
     const fun = typeCheck(t.fun, scope);
     if (fun.type !== "TFun") {
-      throw new TypeError(`Expected a function. found ${AST.printType(fun)}`);
+      typeError(t, `Expected a function. found ${AST.printType(fun)}`);
+    } else {
+      const arg = typeCheck(t.arg, scope);
+      if (!isSubtype(arg, fun.tyParam)) {
+        typeError(
+          t,
+          `type ${AST.printType(arg)} is not assignable to ${AST.printType(
+            fun.tyParam
+          )}`
+        );
+      } else return fun.tyResult;
     }
-    const arg = typeCheck(t.arg, scope);
-    if (!AST.typeEq(fun.tyParam, arg)) {
-      throw new TypeError(
-        `Function expected a ${AST.printType(
-          fun.tyParam
-        )}. found ${AST.printType(arg)}`
-      );
-    }
-    return fun.tyResult;
   }
   if (t.type === "Op") {
     const inf = infixTable.find((inf) => inf.symbol === t.op);
     if (inf == null) throw new TypeError(`Unkown operator ${t.op}`);
     const [tyLeft, tyRight, tyRes] = inf.tySig;
     const left = typeCheck(t.left, scope);
-    if (!AST.typeEq(left, tyLeft)) {
-      throw new TypeError(
-        `Op ${t.op} expected ${AST.printType(tyLeft)}, found ${AST.printType(
+    if (!isSubtype(left, tyLeft)) {
+      typeError(
+        t,
+        `type ${AST.printType(tyLeft)} is not assignable to ${AST.printType(
           left
         )}`
       );
     }
     const right = typeCheck(t.right, scope);
-    if (!AST.typeEq(right, tyRight)) {
-      throw new TypeError(
-        `Op ${t.op} expected ${AST.printType(tyRight)}, found ${AST.printType(
+    if (!isSubtype(right, tyRight)) {
+      typeError(
+        t,
+        `type ${AST.printType(tyRight)} is not assignable to ${AST.printType(
           right
         )}`
       );
@@ -380,13 +384,20 @@ function typeCheck(t: AST.Term, scope: Scope = {}): AST.Type {
   if (t.type === "Projection") {
     const rec = typeCheck(t.record, scope);
     if (rec.type !== "TRecord")
-      throw new Error(`type ${AST.printType(rec)} is not a record type`);
-    if (!(t.field in rec.dict))
-      throw new Error(
-        `type ${AST.printType(rec)} does not have field ${t.field}`
-      );
-    return rec.dict[t.field];
+      typeError(t, `type ${AST.printType(rec)} is not a record type`);
+    else {
+      if (!(t.field in rec.dict))
+        typeError(
+          t,
+          `type ${AST.printType(rec)} does not have field ${t.field}`
+        );
+      return rec.dict[t.field];
+    }
   }
+}
+
+function typeError(t: AST.Term, msg: string) {
+  throw new TypeError(`\n\n${msg}  in  \n\n${AST.printTerm(t)}\n`);
 }
 
 /*
@@ -419,4 +430,8 @@ function printVal(v: Value) {
   const ty = typeCheck(t);
   const val = evaluate(t);
   return `${printVal(val)} : ${AST.printType(ty)}`;
+};
+
+(window as any)._isSub = (s, t) => {
+  return isSubtype(testParser(type, s), testParser(type, t));
 };
