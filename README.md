@@ -24,3 +24,5 @@ examples will be in separate branches.
 - boolean types && `if` construct, also has more operations && priority/associativity ([example](https://github.com/yelouafi/create-a-simple-functional-language/tree/mono-extended))
 
 - record types ([example](https://github.com/yelouafi/create-a-simple-functional-language/tree/mono-records))
+
+- subtyping ([example](https://github.com/yelouafi/create-a-simple-functional-language/tree/mono-subtyping))
