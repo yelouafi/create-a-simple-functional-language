@@ -321,7 +321,7 @@ function typeCheck(t: AST.Term, scope: Scope = {}): AST.Type {
     if (ty == null) {
       typeError(t, `Types of then/else are not compatible`);
     }
-    return then;
+    return ty;
   }
   if (t.type === "Fun") {
     const newScope = { ...scope, [t.paramName]: t.paramType };
