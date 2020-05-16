@@ -25,4 +25,6 @@ examples will be in separate branches.
 
 - record types ([example](https://github.com/yelouafi/create-a-simple-functional-language/tree/mono-records))
 
+- type inference (using Algorithm W) ([example](https://github.com/yelouafi/create-a-simple-functional-language/tree/poly-w))
+
 - subtyping ([example](https://github.com/yelouafi/create-a-simple-functional-language/tree/mono-subtyping))
