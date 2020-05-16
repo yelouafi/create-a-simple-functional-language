@@ -44,6 +44,7 @@ import {
   many,
 } from "pcomb";
 import { buildInfix, infixTable } from "./infix";
+import { typeInfer } from "./infer";
 /*
 First we must fix a couple of things about our syntax
 
@@ -53,7 +54,7 @@ First we must fix a couple of things about our syntax
     var
   ? term op term     
     if term then term else term
-    fn(x: type) => term -- binding forms
+    fn(x) => term -- binding forms
   ? term(term)
     let x = term in term -- binding forms
     ( term )
@@ -84,7 +85,7 @@ First we must fix a couple of things about our syntax
     bool
     var
     if term then term else term
-    fn(x: type) => term
+    fn(x) => term
     let x = term in term 
     ( term )
   
@@ -92,25 +93,6 @@ First we must fix a couple of things about our syntax
   `app` for function application: `?op term` means that the suffix  `op term` 
   becomes optional while `*(term)` means we can repete `(term)` many times 
   (including 0).
-
-We do the same thing for types
-
-  type :=
-    num
-    bool
-    type => type
-    ( type )
-
-  type :=
-    tprefix ?tsuffix
-
-  tsuffix :=
-    => type
-      
-  tprefix :=
-      num
-      bool
-      ( type )
 
   **ONLY THEN** we can start implementing our parser
 */
@@ -132,45 +114,16 @@ const IN = token("in");
 const IF = token("if");
 const THEN = token("then");
 const ELSE = token("else");
-const TNUM = token("num");
-const TBOOL = token("bool");
 const LPAR = token("(");
 const RPAR = token(")");
-const COLON = token(":");
 const EQ = token("=");
 const ARROW = token("=>");
 
 /*
   Then we define parsers which construct our AST
 */
-const tnum = TNUM.mapTo(AST.TNum);
-const tbool = TBOOL.mapTo(AST.TBool);
-/*
-  note `type` and `tsuffix`/`tprefix` are mutually recursive.
-  We have a chicken-egg problem. To circumvant the circularity
-  we use `lazy` which takes a function returning a parser. This will
-  delay the creation of `type` which breaks the vicious circle. 
-*/
-// tprefix ?tsuffix
-const type: Parser<AST.Type> = lazy(() => {
-  return apply(
-    (ty, rest) => {
-      if (rest == null) return ty;
-      // num => num
-      return AST.TFun(ty, rest);
-    },
-    tprefix, // tprefix
-    maybe(tsuffix) // ?tsuffix
-  );
-});
-
-// => type
-const tsuffix = seq(ARROW, type);
-
-// num | ( type )
-const tprefix = oneOf(tnum, tbool, type.between(LPAR, RPAR));
-
 const num = NUM.map((s) => AST.Num(+s));
+
 const bool = oneOf(
   BOOL_TRUE.mapTo(AST.Bool(true)),
   BOOL_FALSE.mapTo(AST.Bool(false))
@@ -187,7 +140,7 @@ const term: Parser<AST.Term> = lazy(() => {
   );
 });
 
-window._parse = (s) => testParser(term, s);
+//window._parse = (s) => testParser(term, s);
 
 const if_ = apply(
   AST.If,
@@ -200,7 +153,6 @@ const if_ = apply(
 const fn = apply(
   AST.Fun,
   seq(FN, LPAR, VAR), // fn(x
-  seq(COLON, type), // : type
   seq(RPAR, ARROW, term) // ) => term
 );
 
@@ -296,78 +248,6 @@ const opTable = {
   "**": (x: any, y: any) => x ** y,
 };
 
-// Scope stores the types of free variables in a term
-type Scope = {
-  [key: string]: AST.Type;
-};
-function typeCheck(t: AST.Term, scope: Scope = {}): AST.Type {
-  if (t.type === "Num") return AST.TNum;
-  if (t.type === "Bool") return AST.TBool;
-  if (t.type === "Var") {
-    if (t.name in scope) return scope[t.name];
-    throw new TypeError(`Unkown variable ${t.name}`);
-  }
-  if (t.type === "If") {
-    const cond = typeCheck(t.cond, scope);
-    if (cond.type !== "TBool")
-      throw new TypeError(
-        `If: exepected a bool condition, found ${AST.printType(cond)}`
-      );
-    const then = typeCheck(t.then, scope);
-    const elze = typeCheck(t.elze, scope);
-    if (!AST.typeEq(then, elze))
-      throw new TypeError(`then/else branches must have the same type.`);
-    return then;
-  }
-  if (t.type === "Fun") {
-    const newScope = { ...scope, [t.paramName]: t.paramType };
-    const tyRes = typeCheck(t.body, newScope);
-    return AST.TFun(t.paramType, tyRes);
-  }
-  if (t.type === "App") {
-    const fun = typeCheck(t.fun, scope);
-    if (fun.type !== "TFun") {
-      throw new TypeError(`Expected a function. found ${AST.printType(fun)}`);
-    }
-    const arg = typeCheck(t.arg, scope);
-    if (!AST.typeEq(fun.tyParam, arg)) {
-      throw new TypeError(
-        `Function expected a ${AST.printType(
-          fun.tyParam
-        )}. found ${AST.printType(arg)}`
-      );
-    }
-    return fun.tyResult;
-  }
-  if (t.type === "Op") {
-    const inf = infixTable.find((inf) => inf.symbol === t.op);
-    if (inf == null) throw new TypeError(`Unkown operator ${t.op}`);
-    const [tyLeft, tyRight, tyRes] = inf.tySig;
-    const left = typeCheck(t.left, scope);
-    if (!AST.typeEq(left, tyLeft)) {
-      throw new TypeError(
-        `Op ${t.op} expected ${AST.printType(tyLeft)}, found ${AST.printType(
-          left
-        )}`
-      );
-    }
-    const right = typeCheck(t.right, scope);
-    if (!AST.typeEq(right, tyRight)) {
-      throw new TypeError(
-        `Op ${t.op} expected ${AST.printType(tyRight)}, found ${AST.printType(
-          right
-        )}`
-      );
-    }
-    return tyRes;
-  }
-  if (t.type === "Let") {
-    const def = typeCheck(t.definition, scope);
-    const newScope = { ...scope, [t.name]: def };
-    return typeCheck(t.body, newScope);
-  }
-}
-
 /*
   Javascipt code generation. In fact, our language is a very
   small subset of Javascript. So the transpilation shouldn't be 
@@ -387,9 +267,9 @@ function emitJS(t: AST.Term): string {
 // quick hack to evaluate programs in developer console
 (window as any)._eval = (s) => {
   const t = testParser(term, s);
-  const ty = typeCheck(t);
+  const sch = typeInfer(t);
   const val = evaluate(t);
   return `${typeof val === "function" ? "<function>" : val} : ${AST.printType(
-    ty
+    sch
   )}`;
 };
